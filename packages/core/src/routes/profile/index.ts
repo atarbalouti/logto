@@ -1,20 +1,23 @@
-import { usernameRegEx, UserScope } from '@logto/core-kit';
+import { PasswordPolicyChecker, usernameRegEx, UserScope } from '@logto/core-kit';
 import { conditional } from '@silverhand/essentials';
 import { z } from 'zod';
 
 import koaGuard from '#src/middleware/koa-guard.js';
 
 import { EnvSet } from '../../env-set/index.js';
+import RequestError from '../../errors/RequestError/index.js';
 import { encryptUserPassword } from '../../libraries/user.utils.js';
 import { buildUserVerificationRecordById } from '../../libraries/verification.js';
 import assertThat from '../../utils/assert-that.js';
+import { checkPasswordPolicyForUser } from '../../utils/password.js';
 import type { UserRouter, RouterInitArgs } from '../types.js';
 
 export default function profileRoutes<T extends UserRouter>(
   ...[router, { queries, libraries }]: RouterInitArgs<T>
 ) {
   const {
-    users: { updateUserById },
+    users: { updateUserById, findUserById },
+    signInExperiences: { findDefaultSignInExperience },
   } = queries;
 
   const {
@@ -76,7 +79,14 @@ export default function profileRoutes<T extends UserRouter>(
       const { id: userId } = ctx.auth;
       const { password, verificationRecordId } = ctx.guard.body;
 
-      // TODO(LOG-9947): apply password policy
+      const user = await findUserById(userId);
+      const signInExperience = await findDefaultSignInExperience();
+      const passwordPolicyChecker = new PasswordPolicyChecker(signInExperience.passwordPolicy);
+      const issues = await checkPasswordPolicyForUser(passwordPolicyChecker, password, user);
+
+      if (issues.length > 0) {
+        throw new RequestError('password.rejected', { issues });
+      }
 
       const verificationRecord = await buildUserVerificationRecordById(
         userId,
