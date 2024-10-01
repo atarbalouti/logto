@@ -1,5 +1,5 @@
 import { usernameRegEx, UserScope } from '@logto/core-kit';
-import { conditional } from '@silverhand/essentials';
+import { userProfileResponseGuard } from '@logto/schemas';
 import { z } from 'zod';
 
 import koaGuard from '#src/middleware/koa-guard.js';
@@ -9,6 +9,8 @@ import { encryptUserPassword } from '../../libraries/user.utils.js';
 import { buildUserVerificationRecordById } from '../../libraries/verification.js';
 import assertThat from '../../utils/assert-that.js';
 import type { UserRouter, RouterInitArgs } from '../types.js';
+
+import { getScopedProfile } from './utils/get-scoped-profile.js';
 
 export default function profileRoutes<T extends UserRouter>(
   ...[router, { queries, libraries }]: RouterInitArgs<T>
@@ -25,6 +27,19 @@ export default function profileRoutes<T extends UserRouter>(
     return;
   }
 
+  router.get(
+    '/profile',
+    koaGuard({
+      response: userProfileResponseGuard.partial(),
+      status: [200],
+    }),
+    async (ctx, next) => {
+      const { id: userId, scopes } = ctx.auth;
+      ctx.body = await getScopedProfile(queries, libraries, scopes, userId);
+      return next();
+    }
+  );
+
   router.patch(
     '/profile',
     koaGuard({
@@ -33,11 +48,7 @@ export default function profileRoutes<T extends UserRouter>(
         avatar: z.string().url().nullable().optional(),
         username: z.string().regex(usernameRegEx).optional(),
       }),
-      response: z.object({
-        name: z.string().nullable().optional(),
-        avatar: z.string().nullable().optional(),
-        username: z.string().optional(),
-      }),
+      response: userProfileResponseGuard.partial(),
       status: [200, 400, 422],
     }),
     async (ctx, next) => {
@@ -55,12 +66,7 @@ export default function profileRoutes<T extends UserRouter>(
 
       ctx.appendDataHookContext('User.Data.Updated', { user: updatedUser });
 
-      // Only return the fields that were actually updated
-      ctx.body = {
-        ...conditional(name !== undefined && { name: updatedUser.name }),
-        ...conditional(avatar !== undefined && { avatar: updatedUser.avatar }),
-        ...conditional(username !== undefined && { username: updatedUser.username }),
-      };
+      ctx.body = await getScopedProfile(queries, libraries, scopes, userId);
 
       return next();
     }

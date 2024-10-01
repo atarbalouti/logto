@@ -44,6 +44,17 @@ describe('profile', () => {
     await webHookApi.cleanUp();
   });
 
+  describe('GET /profile', () => {
+    it('should be able to get profile', async () => {
+      const { user, username, password } = await createDefaultTenantUserWithPassword();
+      const api = await signInAndGetUserApi(username, password);
+      const response = await getUserInfo(api);
+      expect(response).toMatchObject({ username });
+
+      await deleteDefaultTenantUser(user.id);
+    });
+  });
+
   describe('PATCH /profile', () => {
     it('should be able to update name', async () => {
       const { user, username, password } = await createDefaultTenantUserWithPassword();
@@ -79,8 +90,7 @@ describe('profile', () => {
       expect(response).toMatchObject({ avatar: newAvatar });
 
       const userInfo = await getUserInfo(api);
-      // In OIDC, the avatar is mapped to the `picture` field
-      expect(userInfo).toHaveProperty('picture', newAvatar);
+      expect(userInfo).toHaveProperty('avatar', newAvatar);
 
       await deleteDefaultTenantUser(user.id);
     });
